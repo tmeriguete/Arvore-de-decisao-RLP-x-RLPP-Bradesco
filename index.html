@@ -114,7 +114,12 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,
 .dir>.sh{margin-top:10px}
 .ccs{display:grid;gap:12px;margin-top:12px}
 .ccs.n4{grid-template-columns:repeat(4,minmax(0,1fr))} .ccs.n3{grid-template-columns:repeat(3,minmax(0,1fr))}
-.cc{border:1px solid var(--line);border-radius:var(--r-md);padding:14px 16px;background:var(--surface);display:flex;flex-direction:column;gap:5px;min-height:150px}
+.cc{border:1px solid var(--line);border-radius:var(--r-md);padding:12px 14px;background:var(--surface);display:flex;flex-direction:column;gap:3px;min-height:140px}
+.cc-g{background:var(--green-soft);border-color:var(--green)}
+.cc-r{background:var(--red-soft);border-color:var(--red)}
+.bigpct{font-family:Poppins,Inter,system-ui,sans-serif;font-size:30px;font-weight:900;line-height:1.1;margin:3px 0}
+.bigpct.over{color:var(--red)} .bigpct.under{color:var(--green)}
+.cmval{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink)}
 .cc.win{border-color:var(--green);box-shadow:inset 0 0 0 1px var(--green)}
 .cc .ph{display:flex;flex-direction:column;align-items:flex-start;gap:6px;min-height:52px}
 .cc .ph .pn{white-space:nowrap}
@@ -286,6 +291,7 @@ details[open] summary .chev{transform:none}
       </div>
       <div class="grid row2">
         <div class="f"><label for="valor">Valor do reparo</label><input id="valor" inputmode="decimal" placeholder="R$ 0,00"><div class="hint">Total cobrado, antes da franquia</div></div>
+        <div class="f"><label for="reneg">Melhor renegociação feita <span>(opcional)</span></label><input id="reneg" inputmode="decimal" placeholder="R$ 0,00" style="border-color:var(--amber)"><div class="hint">Mínimo já conseguido na negociação</div></div>
         <div class="f" id="catBox" hidden><label for="cat">Categoria Bradesco</label><select id="cat">
           <option value="">Escolha a categoria</option>
           <option value="400">Popular · R$ 400</option><option value="550">Passeio · R$ 550</option><option value="800">Premium · R$ 800</option><option value="1000">Picape · R$ 1.000</option><option value="2600">Luxo ou Super Luxo · R$ 2.600</option></select>
@@ -377,7 +383,15 @@ function servBench(s){const nb=near(s.ci,50),T=D.troca;
   const L=[['família até 50 km',r=>r[1]===s.fam&&nb.has(r[0])],['família em '+s.uf,r=>r[1]===s.fam&&ufOf(r[0])===s.uf],['família na Região '+REG[s.uf],r=>r[1]===s.fam&&regOf(r[0])===REG[s.uf]],['família no Brasil',r=>r[1]===s.fam],['todos os veículos em '+s.uf,r=>ufOf(r[0])===s.uf],['todos os veículos na Região '+REG[s.uf],r=>regOf(r[0])===REG[s.uf]],['todos os veículos no Brasil',()=>true]];
   for(const [l,fn] of L){const v=T.filter(fn).map(r=>r[8]);if(v.length>=5)return{l,n:v.length,med:q(v,.5)}}return null}
 function trBench(s){const pb=pecaBench(s),sb=servBench(s);if(!pb||!sb)return null;
-  return{vn:pb.vn,gn:pb.gn,n:pb.n,low:!!pb.low,peca:pb.med,serv:sb.med,servL:sb.l,servN:sb.n,med:pb.med+sb.med}}
+  const pRows=D.troca.filter(r=>r[5]===s.tipo);
+  let pV=[...pRows.filter(r=>r[2]===s.fipe&&r[3]===s.ano).map(r=>r[7]+sb.med)];
+  if(pV.length<5)pV=[...pRows.filter(r=>r[2]===s.fipe).map(r=>r[7]+sb.med)];
+  if(pV.length<5)pV=[...pRows.filter(r=>r[1]===s.fam).map(r=>r[7]+sb.med)];
+  if(!pV.length)pV=[pb.med+sb.med];
+  const tMin=Math.min(...pV),tMax=Math.max(...pV),tP25=q(pV,.25),tP75=q(pV,.75);
+  const disperso=tMax>tMin*3&&tP75-tP25>800;
+  // eWorst calculado no render, após ter MT e cat disponíveis
+  return{vn:pb.vn,gn:pb.gn,n:pb.n,low:!!pb.low,peca:pb.med,serv:sb.med,servL:sb.l,servN:sb.n,med:pb.med+sb.med,tMin,tMax,tP25,tP75,disperso}}
 const MKN={GENUINA:'Genuína',TYG:'TYG',LOMA:'Loma',LUMAX:'Lumax',DTS:'DTS',R2A:'R2A',FPI:'FPI'};
 function allBrands(s){const rows=D.troca.filter(r=>r[2]===s.fipe);const use=rows.length>=3?rows:D.troca.filter(r=>r[1]===s.fam);
   const by={};use.forEach(r=>{(by[r[6]]=by[r[6]]||[]).push(r[7])});return{lvl:rows.length>=3?'modelo FIPE':'família',by}}
@@ -395,16 +409,16 @@ function brandOpts(s,serv,cat,MT){let rows=D.troca.filter(r=>r[5]===1&&r[2]===s.
 function render(){
   const s={uf:$('uf').value,ci:+$('cid').value,fam:+$('fam').value,fipe:+$('fipe').value,ano:+$('ano').value,lado:-1};
   const MR=num($('mR').value)||801.01,MT=num($('mT').value)||2836.48,FR=num($('fR').value)||0,MH=(num($('mH').value)||0)/100,MG=(num($('mG').value)||0)/100;
-  const needCat=!$('cat').value,cat=+$('cat').value||0,valor=num($('valor').value);$('cat').classList.toggle('need',needCat);
+  const needCat=!$('cat').value,cat=+$('cat').value||0,valor=num($('valor').value),reneg=num($('reneg').value);$('cat').classList.toggle('need',needCat);const jaRen=!isNaN(reneg)&&reneg>0&&reneg<valor;
   const rb=repBench(s),out=$('out');
   const tg=trBench({...s,tipo:0,marca:-1}),th=trBench({...s,tipo:1,marca:-1});
   const fipeTxt=D.fipes[s.fipe],famTxt=D.fams[s.fam],cidTxt=C[s.ci]?C[s.ci][1]:'';
   const base=rb?(rb.vn==='FIPE+ano'?`${fipeTxt} ${s.ano}`:rb.vn==='FIPE'?fipeTxt:famTxt)+', '+(rb.gn==='cidade'?cidTxt:rb.gn==='até 50 km'?'até 50 km de '+cidTxt:rb.gn==='Brasil'?'Brasil':rb.gn)+`, ${rb.n} reparos`:'';
   if(isNaN(valor)||valor<=0){out.innerHTML=`<div class="dirs"><div class="dir d-grey"><div class="dn">1. Direcionamento</div><div class="dt">Informe o valor</div><div class="ds">Digite o valor do reparo, antes da franquia.</div></div><div class="dir d-grey"><div class="dn">2. Por quê</div><div class="dt">Aguardando</div><div class="ds">${rb?`Valor de mercado do reparo: ${brl(rb.med)} (${esc(base)}).`:''}</div></div></div>`;return}
-  const vRep=rb?Math.min(valor,rb.med):valor,eR=Math.max(0,vRep-FR)/MR-1;
-  const ev=(tb,m)=>{if(!tb)return null;if(needCat)return{...tb,inv:false,e:NaN,m,ok:false,needCat:true};const inv=tb.med<=cat;const e=Math.max(0,tb.med-cat)/MT-1;return{...tb,inv,e,m,ok:!inv&&!tb.low&&e<eR-m}};
+  const vNeg=jaRen?reneg:(rb?Math.min(valor,rb.med):valor);const vRep=vNeg,eR=Math.max(0,vRep-FR)/MR-1;
+  const ev=(tb,m)=>{if(!tb)return null;if(needCat)return{...tb,inv:false,e:NaN,m,ok:false,needCat:true,eWorst:NaN};const eWorst=tb.tMax!=null?Math.max(0,tb.tMax-cat)/MT-1:NaN;const inv=tb.med<=cat;const e=Math.max(0,tb.med-cat)/MT-1;return{...tb,inv,e,m,ok:!inv&&!tb.low&&e<eR-m,eWorst}};
   const G=ev(tg,MG),H=ev(th,MH);
-  const fr1=Math.max(0,valor-FR)<=MR,fr2=!fr1&&rb&&rb.med-FR<=MR,freio=fr1||fr2;
+  const fr1=Math.max(0,vNeg-FR)<=MR,fr2=!fr1&&!jaRen&&rb&&rb.med-FR<=MR,freio=fr1||fr2;
   const okG=G&&G.ok,okH=H&&H.ok,troca=!freio&&(okG||okH);
   const best=freio?'R':okH&&(!okG||H.e<=G.e)?'H':okG?'G':'R';
   const why=(x,n)=>!x?`Sem histórico de ${n}.`:x.low?`A ${n} tem pouco histórico.`:x.inv?`Na ${n}, a franquia é maior que a troca.`:x.e<eR?`A vantagem da ${n} é pequena.`:`A ${n} não compensa.`;
@@ -412,7 +426,7 @@ function render(){
   if(troca){const B=best==='H'?H:G,nome=best==='H'?'homologada':'genuína';
     p1={c:'d-blue',t:'Trocar para troca',sub:okG&&okH?'Genuína e homologada compensam. A homologada é a melhor.':okH?'Só com peça homologada. '+why(G,'genuína'):'Só com peça genuína. '+why(H,'homologada')};
     p2={c:'d-blue',t:'Por que trocar?',s:`Mesmo ${rb&&valor>rb.med?`negociando para o valor de mercado (${brl(rb.med)})`:'no valor cobrado'}, o reparo fica ${pm(eR)}. A troca fica melhor na meta, e a melhor opção é a peça ${nome}.`}}
-  else{p1={c:'d-green',t:'Manter no reparo',sub:fr1?'O reparo cabe na meta. A troca não é necessária.':fr2?'Negociando, o reparo cabe na meta. A troca não é necessária.':needCat&&(G||H)?'Escolha a categoria do veículo para comparar com a troca.':(G||H)?'Nenhuma das trocas compensa.':'Sem histórico de troca para comparar.'};
+  else{p1={c:'d-green',t:'Manter no reparo',sub:fr1?(jaRen?`Renegociado para ${brl(reneg)}: cabe na meta.`:'O reparo cabe na meta. A troca não é necessária.'):fr2?'Negociando, o reparo cabe na meta. A troca não é necessária.':needCat&&(G||H)?'Escolha a categoria do veículo para comparar com a troca.':(G||H)?'Nenhuma das trocas compensa.':'Sem histórico de troca para comparar.'};
     if(!rb)p2={c:'d-amber',t:'Por que manter no reparo?',s:'Sem histórico de reparo nesta região para orientar a negociação.'};
     else if(valor<=rb.med)p2={c:'d-green',t:'Por que manter no reparo?',s:fr1?`O valor está dentro do mercado: <b>${brl(rb.med)}</b> (${esc(base)}).<br><b>Pode fechar em ${brl(valor)}.</b>`:`Acima da meta, mas é o valor de mercado (<b>${brl(rb.med)}</b>, ${esc(base)}) e a troca não compensa.<br><b>Pode fechar em ${brl(valor)}.</b>`};
     else if(fr1)p2={c:'d-green',t:'Por que manter no reparo?',s:`${brl(valor)} já cabe na meta. <b>Pode fechar.</b><br>Se possível, negocie para o valor de mercado, <b>${brl(rb.med)}</b> (${esc(base)}).`};
@@ -458,16 +472,16 @@ function render(){
   let rConc;
   const vals=[[G,'genuína'],[H,'homologada']].filter(([x])=>x&&!x.inv&&!x.low).sort((a,b)=>b[0].e-a[0].e);const W=vals[0];
   if(troca)rConc=W&&W[0].e<eR&&vals.length>1?`Mesmo ${neg?'bem negociado no valor de mercado':'no valor cobrado'}, o reparo fica ${pm(eR)}, enquanto até o pior cenário de troca (${W[1]}) fica ${pm(W[0].e)}. <b>O reparo fica pior que qualquer troca.</b>`:`Mesmo ${neg?'bem negociado no valor de mercado':'no valor cobrado'}, o reparo fica ${pm(eR)}, enquanto a troca ${best==='H'?'homologada':'genuína'} fica ${pm(B.e)}. <b>O reparo fica pior na meta que a troca.</b>`;
-  else rConc=opp?(fr1?'O valor cobrado já cabe na meta, mas está acima do mercado.':fr2?'Negociando para o valor de mercado, o reparo cabe na meta.':'Negociando, o reparo fica melhor que a troca.'):p2.s;
+  else rConc=opp?(fr1?(jaRen?`Renegociado para ${brl(reneg)}, o reparo cabe na meta.`:'O valor cobrado já cabe na meta, mas está acima do mercado.'):fr2?'Negociando para o valor de mercado, o reparo cabe na meta.':'Negociando, o reparo fica melhor que a troca.'):p2.s;
   const sel=(cls,txt)=>`<span class="badge ${cls}">${txt}</span>`;
   const tSel=(x,win)=>win?sel('b-best','Melhor'):!x?sel('b-na','Sem histórico'):x.low?sel('b-warn','Pouco histórico'):freio?sel('b-no','Não necessária'):x.needCat?sel('b-warn','Escolha a categoria'):x.inv?sel('b-no','Franquia maior'):x.ok?sel('b-ok','Compensa'):x.e<eR?sel('b-warn','Vantagem pequena'):sel('b-no','Pior');
-  const ccard=(nome,v,e,selo,det,win)=>`<div class="cc ${win?'win':''}"><div class="ph"><span class="pn">${nome}</span>${selo}</div><span class="pv">${isNaN(v)?'sem dado':brl(v)}</span>${isNaN(e)?'':`<span class="pm ${e>0?'over':'under'}">${pm(e)}</span>`}<span class="pc">${det}</span></div>`;
+  const ccard=(nome,v,e,selo,det,win)=>{const bg=isNaN(e)?'':(e<=0?'cc-g':'cc-r');const pS=isNaN(e)?'':`<span class="bigpct ${e>0?'over':'under'}">${pm(e)}</span>`;return`<div class="cc ${win?'win':''} ${bg}"><div class="ph"><span class="pn">${nome}</span>${selo}</div>${pS}<span class="cmval">${isNaN(v)?'sem dado':brl(v)}</span><span class="pc">${det}</span></div>`};
   const rWin=!troca;
   const cards=[];
   cards.push(ccard('Reparo cobrado',valor,eC,neg?sel('b-no','Acima do mercado'):(rWin?sel('b-best','Melhor'):sel('b-no','Pior')),'Valor do credenciado',rWin&&!neg));
-  if(neg)cards.push(ccard('Reparo negociado',rb.med,eR,rWin?sel('b-best','Melhor'):sel('b-no','Pior'),`Valor de mercado, ${rb.n} reparos`,rWin));
+  if(jaRen){const eR2=Math.max(0,reneg-FR)/MR-1;cards.push(ccard('Melhor renegociação',reneg,eR2,rWin?sel('b-best','Melhor'):sel('b-no','Pior'),'Mínimo já conseguido',rWin));}else if(neg)cards.push(ccard('Reparo negociado',rb.med,eR,rWin?sel('b-best','Melhor'):sel('b-no','Pior'),`Valor de mercado, ${rb.n} reparos`,rWin));
   const catNome=$('cat').selectedOptions[0]?$('cat').selectedOptions[0].text.split(' · ')[0]:'';
-  const tc=(nome,x,k)=>x?ccard(nome,x.med,x.inv?NaN:x.e,tSel(x,best===k),`Peça ${brl(x.peca)} + serviço ${brl(x.serv)}, ${x.n} trocas${needCat?'':`<br>Franquia ${catNome} ${brl(cat)}`}`,best===k):ccard(nome,NaN,NaN,sel('b-na','Sem histórico'),'Sem trocas registradas',false);
+  const tc=(nome,x,k)=>x?ccard(nome,x.med,x.inv?NaN:x.e,tSel(x,best===k),`Peça ${brl(x.peca)} + serviço ${brl(x.serv)}, ${x.n} trocas${needCat?'':`<br>Franquia ${catNome} ${brl(cat)}`}${x.tMin!==undefined?(x.disperso?`<br><span style='color:var(--amber);font-weight:600'>⚠ Alta variação: ${brl(x.tMin)} a ${brl(x.tMax)}</span><br><span style='color:${x.eWorst>0?"var(--red)":(x.eWorst>-0.3?"var(--amber)":"var(--green)")}'>Pior caso: CMS ${brl(Math.max(0,x.tMax-cat))} (${pm(x.eWorst)})</span>${x.eWorst>0?"<br><b style=\"color:var(--red)\">⚠ Pior caso estoura a meta. Confirme o orçamento antes de acionar.</b>":""}`:`<br><span style='color:var(--muted)'>Faixa CMS: ${brl(Math.max(0,x.tP25-cat))} a ${brl(Math.max(0,x.tP75-cat))}</span>`):''}`,best===k):ccard(nome,NaN,NaN,sel('b-na','Sem histórico'),'Sem trocas registradas',false);
   cards.push(tc('Troca genuína',G,'G'));cards.push(tc('Troca homologada',H,'H'));
   const marcas=ops.length?`<div class="mk"><span class="mkl">Homologadas com histórico:</span>${ops.map(o=>`<span class="mki">${o.m} ${brl(o.tot)}<small> (${o.n})</small></span>`).join('')}</div>`:'';
   const comp=`<div class="sh"><span class="stt">Comparativo de <b>CENÁRIOS</b></span></div><div class="ccs n${cards.length}">${cards.join('')}</div>${marcas}<div class="ds cconc">${rConc}</div>${opp?"":own}`;
@@ -506,7 +520,7 @@ $('out').addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.tar
 $('fam').onchange=()=>{fillFipe();fillAno();autoCat();fillCred();render()};
 $('fipe').onchange=()=>{fillAno();autoCat();render()};
 ['ano','cat'].forEach(id=>$(id).onchange=render);$('cid').onchange=()=>{fillCred();render()};
-['valor','mR','mT','fR','mH','mG'].forEach(id=>$(id).oninput=render);
+['valor','reneg','mR','mT','fR','mH','mG'].forEach(id=>$(id).oninput=render);
 const d=new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});$('today').textContent=d.replace(/(^|\s|-)(\p{L})/gu,(m,a,b)=>a+b.toUpperCase());
 
 // exemplo inicial
